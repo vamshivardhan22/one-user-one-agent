@@ -1,103 +1,108 @@
 # One User, One Agent
 
-A specification-driven Python baseline for the STAGE hiring challenge. The project focuses on evidence-backed decisions, independent policy verification, durable viewer state, replayability, and honest evaluation.
+A deterministic, auditable agent framework for the STAGE take-home assignment. The design is evidence-first: each viewer has one goal owner, every proposed intervention is independently checked, and uncertain or unsafe cases abstain instead of inventing facts.
 
-## Status
+## What is implemented
 
-This repository is being built from the provided assignment brief and reference guide. The current baseline is not yet a verified completion of every evaluator scenario. The official data pack and simulator were not part of the files supplied during initial implementation, so impact metrics must not be invented.
-
-## What is included in this baseline
-
-- SQLite-backed per-viewer state and an idempotency ledger
-- Deterministic decision engine with explicit abstention
-- Basic source precedence for app dialect, subscription events, and notification opt-out
-- Dialect- and availability-aware home-page candidate selection
-- Independent checks for holdout protection, trigger freshness, and basic page constraints
-- JSONL decision/action output, per-viewer snapshots, and a local latency report
-- A no-API-key CLI and unit tests
+- SQLite persistence for per-viewer state, decisions, action idempotency, and outcome records.
+- Deterministic source resolution with provenance and visible dialect conflicts.
+- Conservative goal selection: goals without a measurable success signal are not selected.
+- Home-page planning from catalogue records, with dialect, availability, row-size, row-type and content_slug checks.
+- Holdout protection, stale-trigger abstention, duplicate-trigger idempotency, quiet-hours helpers and messaging policy checks.
+- Replay ordering for triggers, live events, and control events; targeted goal-rule updates and title withdrawals are recorded in the replay audit.
+- Injected model faults are matched by trigger/viewer and handled with deterministic fallback; simulated state-store failures fail closed.
+- Goal outcome judging distinguishes succeeded, failed and inconclusive, and uses configured success signals inside goal windows.
+- Randomized-arm intention-to-treat reporting with per-goal rates and Wilson intervals; pilot re-analysis refuses to fabricate estimates when the expected randomized-arm schema is absent.
+- GitHub Actions runs the automated test suite on pushes and pull requests.
 
 ## Quick start
 
-Requires Python 3.10 or newer.
+Requires Python 3.10+.
 
-```bash
-python -m venv .venv
-```
+    python -m venv .venv
 
-On macOS/Linux:
+macOS/Linux: `source .venv/bin/activate`
 
-```bash
-source .venv/bin/activate
-```
-
-On Windows PowerShell:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
+Windows PowerShell: `.\.venv\Scripts\Activate.ps1`
 
 Install and test:
 
-```bash
-python -m pip install --upgrade pip
-pip install -e .
-python -m pytest -q
-```
+    python -m pip install --upgrade pip
+    pip install -e .
+    pip install pytest
+    python -m pytest -q
 
-Replay an unpacked data pack:
+Replay:
 
-```bash
-stage-agent replay --pack /path/to/unpacked-data-pack --out sample_run
-```
+    stage-agent replay --pack /path/to/unpacked-data-pack --out sample_run
 
-Without installing the package, use `PYTHONPATH=src python -m stage_agent.cli replay --pack /path/to/unpacked-data-pack --out sample_run` (on Windows PowerShell, set `$env:PYTHONPATH = "src"` first).
+## Expected data pack
 
-## Expected input layout
+The loader expects the assignment's documented layout:
 
-```text
-data/events.jsonl
-data/profiles_snapshot.csv
-data/catalogue.csv
-config/goals.json
-config/interventions.json
-config/pricing.json
-replay/arms.csv
-replay/triggers.jsonl
-```
+    data/events.jsonl
+    data/profiles_snapshot.csv
+    data/catalogue.csv
+    data/episodes.csv
+    config/goals.json
+    config/interventions.json
+    config/pricing.json
+    config/messaging_policy.md
+    pilot/
+    replay/triggers.jsonl
+    replay/live_events.jsonl
+    replay/control_events.jsonl
+    replay/model_faults.jsonl
+    replay/arms.csv
+    simulator/simulate_outcomes.py
 
-The loader also accepts `replay/app_open_triggers.jsonl`. Confirm all field names and additional replay-control files against the actual pack's README before using it for formal evaluation.
+The replay loader reads common input files and tolerates absent optional files. It does not invent a missing pack or assume unknown schema fields are valid. Verify the pack README and simulator's actual CLI before running the simulator. The simulator is not included in this repository.
 
-## Output
+## Replay outputs
 
-The replay writes `decisions.jsonl`, `actions.jsonl`, `outcomes.jsonl`, `state.sqlite3`, `viewer_state/`, `latency_report.json`, and `impact_report.json`. The impact report is explicitly marked pending until simulator outcomes are supplied. Local decision timing is not the same as end-to-end publish latency.
+- decisions.jsonl: decision records and explicit abstentions
+- actions.jsonl: actions that passed the verifier
+- outcomes.jsonl: goal-level succeeded/failed/inconclusive judgments
+- replay_audit.jsonl: control-event and duplicate-live-event handling
+- state.sqlite3 and viewer_state/: durable state and readable snapshots
+- latency_report.json: local decision compute timing, stale triggers, and fault/control counts
+- impact_report.json: per-goal intention-to-treat analysis and pilot re-analysis status
 
-## Engineering principles
+## Policy rules enforced in the baseline
 
-1. Do not infer eligibility without evidence.
-2. Holdout users must receive no interventions.
-3. Notification opt-out events override stale profile opt-ins.
-4. The current app setting takes precedence for rendered dialect, while conflicts remain auditable.
-5. A verifier rejection must prevent publication.
-6. Duplicate event IDs must not create duplicate decisions.
-7. Treat catalogue text as untrusted content, never as instructions.
-8. Report intention-to-treat impact across all randomized agent-arm users versus all holdout users; never substitute served-versus-unserved comparisons.
+- Holdout viewers receive no interventions.
+- A stale/offline-buffered trigger is not treated as a live session.
+- App dialect wins for the current render; disagreements remain visible.
+- Catalogue items must match dialect and availability at decision time.
+- Pages use allowed row types, 3–10 titles per row, no more than six rows, and unique content slugs.
+- Push and WhatsApp verification checks consent, quiet hours, combined daily cap, approved WhatsApp template and push copy constraints.
+- An opt-out event overrides a stale profile opt-in.
+- Catalogue descriptions and other user-supplied text are data, never instructions.
+- An unavailable state store leads to abstention rather than an unverified action.
+- Missing outcome evidence is not reported as zero uplift.
 
-## Current limitations
+## Impact methodology
 
-The existing four tests cover idempotency, holdout rejection, input-event deduplication, and dialect conflict resolution. They do not demonstrate full compliance with every rule in the assignment. Goal-specific eligibility, complete message template rules, injected failure recovery, corrected goal rules, outcome attribution, confidence intervals, and unseen replay evaluation still require more implementation and testing. External push/WhatsApp delivery is not connected.
+Use the randomized assignment in replay/arms.csv. Compare all assigned agent-arm viewers against all holdout viewers, not users who were served versus those who were not. The latter comparison is biased because being served is not random. Goal outcomes are attributed only when the configured success event occurs between goal start and deadline. Wilson intervals are reported for each arm's rate.
 
-Do not describe this baseline as production-ready or claim positive uplift until those items have been tested with real evaluation inputs.
+A formal risk-difference confidence interval and the pilot's exact re-analysis require the actual pilot/outcome schemas and data. If the available columns cannot establish randomized assignment and binary outcome, the report explicitly returns NOT_COMPUTED.
 
-## Project layout
+## Current verification boundary
 
-```text
-src/stage_agent/   Engine, storage, time utilities, and replay CLI
-tests/             Regression tests
-ARCHITECTURE.md    System flow and trust boundaries
-AI_COLLABORATION.md
-KNOWN_LIMITATIONS.md
-```
+The CI suite covers unit-level behavior and an empty-pack replay contract. It does not prove that the complete unseen evaluation passes. The actual Data Pack, its 12 goal definitions, the simulator implementation, and pilot tables were not present in the material available for this repository work. Therefore exact goal-specific interpretations, actual injected fault formats, simulator compatibility, and real impact figures cannot be truthfully marked verified until the official files are run.
 
-## AI collaboration
+The two unclear goals and the unmeasurable goal must be resolved from the actual config/goals.json, not guessed. The same applies to the three approved WhatsApp templates and simulator arguments.
 
-The assignment permits AI-assisted development but places responsibility for checking the output on the candidate. Keep `AI_COLLABORATION.md` factual: add the actual commands run, test output, corrections made, and examples of AI output that you personally rejected or revised.
+## Project files
+
+- src/stage_agent/engine.py — decision engine and independent verifier
+- src/stage_agent/replay.py — replay, live/control event ordering and reports
+- src/stage_agent/faults.py — deterministic injected-fault handling
+- src/stage_agent/outcomes.py — goal judging, randomized-arm reporting and pilot schema checks
+- src/stage_agent/state.py — SQLite state
+- tests/ — regression tests
+- ARCHITECTURE.md, KNOWN_LIMITATIONS.md, AI_COLLABORATION.md — design, scope and verification notes
+
+## Submission discipline
+
+Run the actual pack from a clean environment, inspect every failed test, and archive the generated reports. Do not claim positive uplift, successful delivery, production readiness, or a full unseen replay pass unless the evidence exists. Complete AI_COLLABORATION.md with real examples from your own review rather than invented anecdotes.
