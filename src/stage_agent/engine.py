@@ -2,6 +2,7 @@ from __future__ import annotations
 from datetime import timedelta
 import time
 from .timeutil import parse_time, iso, age_seconds, ist_day, is_quiet_hours
+from .goal_rules import evaluate_eligibility
 
 FORBIDDEN_PUSH = ("last chance", "hurry", "only today", "free forever", "guaranteed")
 ALLOWED_ROWS = {"next_episode", "because_you_watched", "popular_in_dialect", "new_releases", "genre"}
@@ -77,23 +78,20 @@ class AgentEngine:
         return facts, conflicts, events
 
     def _goal_candidates(self, facts, events):
-        event_names = {str(first(event,"event_name","event_type","name",default="")).lower() for event in events}
         candidates = []
         for goal in self.goals:
             success_signal = first(goal,"success_event","success_signal","success_event_name")
             if not success_signal:
+                # A goal without a measurable signal is never selected.
                 continue
-            eligibility = first(goal,"eligibility","eligibility_rule",default={})
-            if isinstance(eligibility, dict):
-                required_event = first(eligibility,"requires_event","event")
-                if required_event and str(required_event).lower() not in event_names:
-                    continue
-                required_subscription = first(eligibility,"subscription_status","subscription")
-                if required_subscription and str(facts["subscription"]["value"]).lower() != str(required_subscription).lower():
-                    continue
-            elif str(eligibility).strip().lower() in {"false","never"}:
-                continue
-            candidates.append(goal)
+            eligible, reasons = evaluate_eligibility(goal, facts, events)
+            if eligible:
+                candidate = dict(goal)
+                candidate["_eligibility_evidence"] = reasons
+                candidates.append(candidate)
+        # Stable order makes replay deterministic. Explicit priority wins when supplied.
+        candidates.sort(key=lambda goal: (int(first(goal,"priority",default=100) or 100),
+                                          str(first(goal,"id","goal_id","key",default=""))))
         return candidates
 
     def _available_titles(self, dialect, now):
