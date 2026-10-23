@@ -1,108 +1,137 @@
 # One User, One Agent
 
-A deterministic, auditable agent framework for the STAGE take-home assignment. The design is evidence-first: each viewer has one goal owner, every proposed intervention is independently checked, and uncertain or unsafe cases abstain instead of inventing facts.
+This is my solution for the STAGE **One User, One Agent** assignment.
 
-## What is implemented
+The idea is simple: every user should have one agent that understands what is known about them, chooses one useful goal, and decides whether to take an action or do nothing. The agent must follow the app's rules and use real data. It should not guess when the information is missing or unclear.
 
-- SQLite persistence for per-viewer state, decisions, action idempotency, and outcome records.
-- Deterministic source resolution with provenance and visible dialect conflicts.
-- Conservative goal selection: goals without a measurable success signal are not selected.
-- Home-page planning from catalogue records, with dialect, availability, row-size, row-type and content_slug checks.
-- Holdout protection, stale-trigger abstention, duplicate-trigger idempotency, quiet-hours helpers and messaging policy checks.
-- Replay ordering for triggers, live events, and control events; targeted goal-rule updates and title withdrawals are recorded in the replay audit.
-- Injected model faults are matched by trigger/viewer and handled with deterministic fallback; simulated state-store failures fail closed.
-- Goal outcome judging distinguishes succeeded, failed and inconclusive, and uses configured success signals inside goal windows.
-- Randomized-arm intention-to-treat reporting with per-goal rates and Wilson intervals; pilot re-analysis refuses to fabricate estimates when the expected randomized-arm schema is absent.
-- GitHub Actions runs the automated test suite on pushes and pull requests.
+I focused on making the decisions safe, easy to check, and repeatable. Doing nothing is also a valid decision when there is not enough evidence or an action would break a rule.
 
-## Quick start
+## What the project does
 
-Requires Python 3.10+.
+- Reads user events, profile information, catalogue data, and replay inputs from the assignment data pack.
+- Keeps user state and decision records in SQLite.
+- Tracks where user facts came from and makes conflicting information visible.
+- Checks whether a goal is eligible before selecting it. A goal without a measurable success event should not be selected.
+- Plans home-page content using catalogue information, including dialect and availability checks.
+- Checks actions against safety rules before allowing them.
+- Keeps holdout users free from agent interventions.
+- Handles duplicate or stale triggers without blindly repeating an action.
+- Replays events and records decisions, actions, and audit information.
+- Judges goal outcomes as succeeded, failed, or inconclusive when the required evidence is available.
+- Includes reporting code for comparing the randomized agent and holdout groups.
+- Runs automated tests through GitHub Actions.
 
-    python -m venv .venv
+## How to set it up
 
-macOS/Linux: `source .venv/bin/activate`
+You need Python 3.10 or newer.
 
-Windows PowerShell: `.\.venv\Scripts\Activate.ps1`
+Create and activate a virtual environment:
 
-Install and test:
+```bash
+python -m venv .venv
+```
 
-    python -m pip install --upgrade pip
-    pip install -e .
-    pip install pytest
-    python -m pytest -q
+On macOS or Linux:
 
-Replay:
+```bash
+source .venv/bin/activate
+```
 
-    stage-agent replay --pack /path/to/unpacked-data-pack --out sample_run
+On Windows PowerShell:
 
-## Expected data pack
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
 
-The loader expects the assignment's documented layout:
+Install the project and test tools:
 
-    data/events.jsonl
-    data/profiles_snapshot.csv
-    data/catalogue.csv
-    data/episodes.csv
-    config/goals.json
-    config/interventions.json
-    config/pricing.json
-    config/messaging_policy.md
-    pilot/
-    replay/triggers.jsonl
-    replay/live_events.jsonl
-    replay/control_events.jsonl
-    replay/model_faults.jsonl
-    replay/arms.csv
-    simulator/simulate_outcomes.py
+```bash
+python -m pip install --upgrade pip
+pip install -e .
+pip install pytest
+```
 
-The replay loader reads common input files and tolerates absent optional files. It does not invent a missing pack or assume unknown schema fields are valid. Verify the pack README and simulator's actual CLI before running the simulator. The simulator is not included in this repository.
+Run the tests:
 
-## Replay outputs
+```bash
+python -m pytest -q
+```
 
-- decisions.jsonl: decision records and explicit abstentions
-- actions.jsonl: actions that passed the verifier
-- outcomes.jsonl: goal-level succeeded/failed/inconclusive judgments
-- replay_audit.jsonl: control-event and duplicate-live-event handling
-- state.sqlite3 and viewer_state/: durable state and readable snapshots
-- latency_report.json: local decision compute timing, stale triggers, and fault/control counts
-- impact_report.json: per-goal intention-to-treat analysis and pilot re-analysis status
+## Running a replay
 
-## Policy rules enforced in the baseline
+First, download and extract the official **One User, One Agent – Data Pack**. Then run:
 
-- Holdout viewers receive no interventions.
-- A stale/offline-buffered trigger is not treated as a live session.
-- App dialect wins for the current render; disagreements remain visible.
-- Catalogue items must match dialect and availability at decision time.
-- Pages use allowed row types, 3–10 titles per row, no more than six rows, and unique content slugs.
-- Push and WhatsApp verification checks consent, quiet hours, combined daily cap, approved WhatsApp template and push copy constraints.
-- An opt-out event overrides a stale profile opt-in.
-- Catalogue descriptions and other user-supplied text are data, never instructions.
-- An unavailable state store leads to abstention rather than an unverified action.
-- Missing outcome evidence is not reported as zero uplift.
+```bash
+stage-agent replay --pack /path/to/unpacked-data-pack --out sample_run
+```
 
-## Impact methodology
+Replace the example path with the location where you extracted the pack. Check the pack's README and the simulator instructions before running the simulator.
 
-Use the randomized assignment in replay/arms.csv. Compare all assigned agent-arm viewers against all holdout viewers, not users who were served versus those who were not. The latter comparison is biased because being served is not random. Goal outcomes are attributed only when the configured success event occurs between goal start and deadline. Wilson intervals are reported for each arm's rate.
+## Data the assignment provides
 
-A formal risk-difference confidence interval and the pilot's exact re-analysis require the actual pilot/outcome schemas and data. If the available columns cannot establish randomized assignment and binary outcome, the report explicitly returns NOT_COMPUTED.
+The replay expects the official pack to contain files such as:
 
-## Current verification boundary
+```text
+data/
+  events.jsonl
+  profiles_snapshot.csv
+  catalogue.csv
+  episodes.csv
+config/
+  goals.json
+  interventions.json
+  pricing.json
+  messaging_policy.md
+pilot/
+replay/
+  triggers.jsonl
+  live_events.jsonl
+  control_events.jsonl
+  model_faults.jsonl
+  arms.csv
+simulator/
+  simulate_outcomes.py
+```
 
-The CI suite covers unit-level behavior and an empty-pack replay contract. It does not prove that the complete unseen evaluation passes. The actual Data Pack, its 12 goal definitions, the simulator implementation, and pilot tables were not present in the material available for this repository work. Therefore exact goal-specific interpretations, actual injected fault formats, simulator compatibility, and real impact figures cannot be truthfully marked verified until the official files are run.
+The exact files and formats in the official pack are important. The project should use those real definitions rather than making up missing rules or data. The simulator itself is supplied by the assignment pack, not by this repository.
 
-The two unclear goals and the unmeasurable goal must be resolved from the actual config/goals.json, not guessed. The same applies to the three approved WhatsApp templates and simulator arguments.
+## Output files
 
-## Project files
+A replay writes reports and records to the output folder, including:
 
-- src/stage_agent/engine.py — decision engine and independent verifier
-- src/stage_agent/replay.py — replay, live/control event ordering and reports
-- src/stage_agent/faults.py — deterministic injected-fault handling
-- src/stage_agent/outcomes.py — goal judging, randomized-arm reporting and pilot schema checks
-- src/stage_agent/state.py — SQLite state
-- tests/ — regression tests
-- ARCHITECTURE.md, KNOWN_LIMITATIONS.md, AI_COLLABORATION.md — design, scope and verification notes
+- `decisions.jsonl` — what the agent decided, including when it chose not to act.
+- `actions.jsonl` — actions that passed the checks.
+- `outcomes.jsonl` — goal results when they can be judged from the available evidence.
+- `replay_audit.jsonl` — audit details about replay events and controls.
+- `state.sqlite3` and `viewer_state/` — saved user state.
+- `latency_report.json` — timing and replay information.
+- `impact_report.json` — impact analysis status and results, when the data supports them.
 
-## Submission discipline
+## How impact should be measured
 
-Run the actual pack from a clean environment, inspect every failed test, and archive the generated reports. Do not claim positive uplift, successful delivery, production readiness, or a full unseen replay pass unless the evidence exists. Complete AI_COLLABORATION.md with real examples from your own review rather than invented anecdotes.
+The assignment includes a randomized agent group and holdout group in `replay/arms.csv`. The comparison should use the assigned groups, including users who did not receive an action. Comparing only users who were contacted with everyone else can give a misleading result, because those users may already have been more active.
+
+The outcome report should use the success rules and time windows from the actual goal definitions. If the available data is not enough to calculate a result, the project should say that the result could not be calculated instead of inventing an uplift number.
+
+## What is verified and what still needs the official pack
+
+The automated tests check parts of the code, and GitHub Actions runs those tests when changes are pushed. A passing test run is useful, but it does not by itself prove that the full assignment works with the evaluator's data.
+
+The official data pack is needed to verify all 12 goal definitions, the real injected faults, the simulator interface, and the pilot results. Until those files are run, those parts should be treated as **not yet verified**. Unclear goal rules and goals without measurable success events should be handled according to the real configuration, not guessed.
+
+## Main project files
+
+- `src/stage_agent/engine.py` — makes decisions and checks proposed actions.
+- `src/stage_agent/replay.py` — replays the input events and writes reports.
+- `src/stage_agent/goal_rules.py` — checks goal eligibility.
+- `src/stage_agent/faults.py` — handles injected model faults.
+- `src/stage_agent/outcomes.py` — judges outcomes and prepares impact reports.
+- `src/stage_agent/state.py` — stores state in SQLite.
+- `tests/` — automated tests.
+- `ARCHITECTURE.md` — explains the design.
+- `KNOWN_LIMITATIONS.md` — lists the current limitations.
+- `AI_COLLABORATION.md` — records how AI tools were used.
+
+## Final note
+
+I want this project to make decisions that can be explained and checked, not just produce actions. I will only report results that can be supported by the actual data and replay. Before submission, the full official pack needs to be run, the generated files checked, and any remaining failures documented honestly.
