@@ -1,12 +1,32 @@
-# Known Limitations
+# Known Limitations and Verification Status
 
-1. The official synthetic Data Pack and simulator were not supplied with the two reference documents used during initial implementation. Exact field names and replay behavior must be validated.
-2. Goal eligibility currently handles only simple generic rule shapes. All goal-specific conditions from the actual goals configuration still need explicit mapping and tests.
-3. Corrected goal rules during replay and outcome re-judgment are not implemented end to end.
-4. The loader reads common replay files, but all actual control-event and injected-fault semantics require integration.
-5. Push and WhatsApp publication are not connected to providers. The baseline should not be described as sending real messages.
-6. Outcome attribution, intention-to-treat confidence intervals, pilot re-analysis, and goal-level impact require simulator results and are not yet complete.
-7. SQLite provides local persistence, but cross-process publication claims require transactions/leases or a queue for production.
-8. Latency reports measure local computation and do not prove publication or message delivery latency.
-9. Confidence values are heuristic, not calibrated probabilities.
-10. No positive uplift or unseen replay pass is claimed.
+## Implemented in this repository
+
+- SQLite state and trigger idempotency.
+- Basic fact provenance and app-dialect precedence.
+- Conservative generic goal selection requiring a measurable success signal.
+- Home-page candidate planning and an independent verifier.
+- Stale-trigger abstention, replay timeline ordering, control-event audit, and generic injected-fault matching.
+- Goal outcome classification and per-goal randomized-arm intention-to-treat rates with Wilson intervals.
+- CI test workflow.
+
+## Not yet verifiable from available materials
+
+The assignment guide describes the data pack and simulator, but those actual files were not available in the repository conversation. Without them, these items cannot honestly be declared complete:
+
+1. Exact eligibility and success logic for all 12 goals, including the two ambiguous rules and one unmeasurable goal.
+2. Exact field names and payload semantics for every control event and injected model fault.
+3. Whether the provided simulator accepts the replay adapter's expected inputs and which command-line arguments it supports.
+4. Exact pilot report re-analysis and the difference from the biased served-versus-unserved headline.
+5. End-to-end outcomes, goal-level uplift, and a valid confidence interval for the risk difference using the actual randomized cohort.
+6. Provider delivery receipts and real end-to-end latency. The current latency report measures local computation, not confirmed delivery.
+7. Multi-process action claiming/locking for a production distributed deployment.
+8. The three actual approved WhatsApp template IDs and complete intervention schema.
+
+## Safe reporting rules
+
+- Missing outcome data is not a zero-success result.
+- Missing or unsupported goal conditions must not be guessed.
+- Synthetic test fixtures are not official replay evidence.
+- Never upload personal pack data to third-party services.
+- Never claim full assignment completion based only on unit tests.
