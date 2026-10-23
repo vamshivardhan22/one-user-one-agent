@@ -55,16 +55,18 @@ class AgentEngine:
             conflicts.append({"fact":"dialect","chosen":"app_setting","app_setting":app_dialect,"profile":profile_dialect})
         def name(event):
             return str(first(event, "event_name", "event_type", "name", default="")).lower()
-        purchases = [event for event in events if name(event) in {"purchase","subscription_purchased","payment_success"}]
-        optouts = [event for event in events if name(event) in {"notification_opt_out","push_opt_out"}]
-        signups = [event for event in events if name(event) == "signup_completed"]
+        purchases = sorted([event for event in events if name(event) in {"purchase","subscription_purchased","payment_success"}],
+                           key=lambda event: str(first(event,"received_at",default="")))
+        optouts = sorted([event for event in events if name(event) in {"notification_opt_out","push_opt_out"}],
+                         key=lambda event: str(first(event,"received_at",default="")))
+        signups = sorted([event for event in events if name(event) == "signup_completed"],
+                          key=lambda event: str(first(event,"received_at",default="")))
         subscription = "paid" if purchases else first(profile, "subscription_status", "subscription", default="unknown")
         notification_opt_in = False if optouts else as_bool(first(profile, "notifications_opt_in", "push_opt_in", default=False))
         whatsapp_opt_in = as_bool(first(profile, "whatsapp_opt_in", default=False))
         signup = first(profile, "signup_at", "signup_date")
         if signups:
-            latest = max(signups, key=lambda event: str(first(event, "received_at", default="")))
-            signup = first(latest, "received_at", "occurred_at", default=signup)
+            signup = first(signups[-1], "received_at", "occurred_at", default=signup)
         facts = {
             "dialect": self._fact(app_dialect or profile_dialect, "app_setting" if app_dialect else "profile", first(trigger,"received_at"), "current_trigger" if app_dialect else "snapshot"),
             "subscription": self._fact(subscription, "purchase_event" if purchases else "profile_snapshot", first(purchases[-1],"received_at") if purchases else first(profile,"snapshot_at","updated_at"), "event" if purchases else "possibly_stale"),
@@ -86,8 +88,8 @@ class AgentEngine:
                 required_event = first(eligibility,"requires_event","event")
                 if required_event and str(required_event).lower() not in event_names:
                     continue
-                subscription = first(eligibility,"subscription_status","subscription")
-                if subscription and str(facts["subscription"]["value"]).lower() != str(subscription).lower():
+                required_subscription = first(eligibility,"subscription_status","subscription")
+                if required_subscription and str(facts["subscription"]["value"]).lower() != str(required_subscription).lower():
                     continue
             elif str(eligibility).strip().lower() in {"false","never"}:
                 continue
@@ -118,8 +120,8 @@ class AgentEngine:
             return None
         chosen = titles[:min(10,len(titles))]
         return {"action":"HOME_PAGE","hero_title_id":first(chosen[0],"title_id","id"),
-                "rows":[{"type":"popular_in_dialect","titles":[{"title_id":first(t,"title_id","id"),
-                "content_slug":first(t,"content_slug","slug"),"title":first(t,"title","name")} for t in chosen]}],
+                "rows":[{"type":"popular_in_dialect","titles":[{"title_id":first(title,"title_id","id"),
+                "content_slug":first(title,"content_slug","slug"),"title":first(title,"title","name")} for title in chosen]}],
                 "ttl_minutes":120}
 
     def _choose_action(self, facts, goal, now):
@@ -142,9 +144,9 @@ class AgentEngine:
             for row in action.get("rows",[]):
                 if row.get("type") not in ALLOWED_ROWS:
                     failed.append({"check":"row_type","reason":"Unsupported home row type."})
-                titles = row.get("titles",[])
-                title_rows.extend(titles)
-                if not 3 <= len(titles) <= 10:
+                row_titles = row.get("titles",[])
+                title_rows.extend(row_titles)
+                if not 3 <= len(row_titles) <= 10:
                     failed.append({"check":"row_size","reason":"Home rows require 3-10 titles."})
             if len(action.get("rows",[])) > 6:
                 failed.append({"check":"row_count","reason":"A page may contain at most six rows."})
